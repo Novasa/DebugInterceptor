@@ -1,5 +1,6 @@
 package com.novasa.debuginterceptor;
 
+import android.text.TextUtils;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -98,16 +99,21 @@ public class DebugInterceptor implements Interceptor {
 
     private void printRequest(final Request request) {
 
+        final String method = request.method();
+        final String url = request.url().toString();
+
         final StringBuilder sb = new StringBuilder("[REQUEST]")
-                .append(String.format(" | METHOD: %s", request.method()))
-                .append(String.format(" | URL: %s", request.url().toString()));
+                .append(String.format(" | METHOD: %s", method))
+                .append(String.format(" | URL: %s", url));
 
         if (mPrintRequestHeaders) {
-            sb.append(String.format("\n| HEADERS: %s", headersToString(request.headers())));
+            final String headers = headersToString(request.headers());
+            sb.append(String.format("\n| HEADERS: %s", headers));
         }
 
         if (mPrintRequestBody) {
-            sb.append(String.format("\n| BODY: %s", parseRequestBody(request.body())));
+            final String body = parseRequestBody(request.body());
+            sb.append(String.format("\n| BODY: %s", body));
         }
 
         d(sb.toString());
@@ -118,11 +124,17 @@ public class DebugInterceptor implements Interceptor {
 
     private void printResponse(final Response response) {
 
+        final String method = response.request().method();
+        final String url = response.request().url().toString();
+        final int statusCode = response.code();
+        final String statusText = response.message();
+        final long time = response.receivedResponseAtMillis() - response.sentRequestAtMillis();
+
         final StringBuilder sb = new StringBuilder("[RESPONSE]")
-                .append(String.format(" | METHOD: %s", response.request().method()))
-                .append(String.format(" | URL: %s", response.request().url().toString()))
-                .append(String.format(" | STATUS: %d (%s)", response.code(), response.message()))
-                .append(String.format(" | TIME: %d ms", response.receivedResponseAtMillis() - response.sentRequestAtMillis()));
+                .append(String.format(" | METHOD: %s", method))
+                .append(String.format(" | URL: %s", url))
+                .append(String.format(" | STATUS: %d (%s)", statusCode, !TextUtils.isEmpty(statusText) ? statusText : StatusCodes.STATUS.get(statusCode)))
+                .append(String.format(" | TIME: %d ms", time));
 
         if (mPrintRequestBodyParamsInResponse != null) {
             try {
@@ -140,13 +152,15 @@ public class DebugInterceptor implements Interceptor {
         }
 
         if (mPrintResponseHeaders) {
-            sb.append(String.format("\n| HEADERS: %s", headersToString(response.headers())));
+            final String headers = headersToString(response.headers());
+            sb.append(String.format("\n| HEADERS: %s", headers));
         }
 
         final boolean success = response.isSuccessful();
 
         if (success && mPrintResponseBody || !success && mPrintResponseErrorBody) {
-            sb.append(String.format("\n| BODY: %s", parseResponseBody(response.body())));
+            final String body = parseResponseBody(response.body());
+            sb.append(String.format("\n| BODY: %s", body));
         }
 
         if (success) {
@@ -158,11 +172,17 @@ public class DebugInterceptor implements Interceptor {
     }
 
     private void printError(final Request request, final Exception e) {
+
+        final String method = request.method();
+        final String url = request.url().toString();
+        final String exception = e.getClass().getName();
+        final String message = e.getMessage();
+
         final StringBuilder sb = new StringBuilder("[ERROR]")
-                .append(String.format(" | METHOD: %s", request.method()))
-                .append(String.format(" | URL: %s", request.url().toString()))
-                .append(String.format(" | EXCEPTION: %s", e.getClass().getName()))
-                .append(String.format(" | MESSAGE: %s", e.getMessage()));
+                .append(String.format(" | METHOD: %s", method))
+                .append(String.format(" | URL: %s", url))
+                .append(String.format(" | EXCEPTION: %s", exception))
+                .append(String.format(" | MESSAGE: %s", message));
 
         e(sb.toString());
     }
@@ -185,7 +205,7 @@ public class DebugInterceptor implements Interceptor {
                 return buffer.readUtf8();
 
             } else {
-                return "none";
+                return "[NONE]";
             }
 
         } catch (Exception e) {
@@ -223,10 +243,13 @@ public class DebugInterceptor implements Interceptor {
 
                 final Buffer clone = buffer.clone();
 
-                return String.format("size: %d bytes, content: %s", clone.size(), clone.readString(charset));
+                final long size = clone.size();
+                final String content = clone.readString(charset);
+
+                return String.format("size: %d bytes, content: %s", size, !TextUtils.isEmpty(content) ? content : "[NONE]");
 
             } else {
-                return "none";
+                return "[NONE]";
             }
 
         } catch (Exception e) {
