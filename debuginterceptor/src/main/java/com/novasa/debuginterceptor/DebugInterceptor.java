@@ -40,37 +40,49 @@ public class DebugInterceptor implements Interceptor {
     private String[] mPrintRequestBodyParamsInResponse;
     private Gson mGson;
 
-    /** Default = true */
+    /**
+     * Default = true
+     */
     public DebugInterceptor setPrintRequestHeaders(boolean print) {
         mPrintRequestHeaders = print;
         return this;
     }
 
-    /** Default = true */
+    /**
+     * Default = true
+     */
     public DebugInterceptor setPrintRequestBody(boolean print) {
         mPrintRequestBody = print;
         return this;
     }
 
-    /** Default = true */
+    /**
+     * Default = true
+     */
     public DebugInterceptor setPrintResponseHeaders(boolean print) {
         mPrintResponseHeaders = print;
         return this;
     }
 
-    /** Default = false */
+    /**
+     * Default = false
+     */
     public DebugInterceptor setPrintResponseBody(boolean print) {
         mPrintResponseBody = print;
         return this;
     }
 
-    /** Default = true */
+    /**
+     * Default = true
+     */
     public DebugInterceptor setPrintResponseErrorBody(boolean print) {
         mPrintResponseErrorBody = print;
         return this;
     }
 
-    /** Example use: If the rest method name is in the request body, and you want to print it in the response. */
+    /**
+     * Example use: If the rest method name is in the request body, and you want to print it in the response.
+     */
     public DebugInterceptor setPrintRequestBodyParamsInResponse(String... printRequestBodyParamsInResponse) {
         mPrintRequestBodyParamsInResponse = printRequestBodyParamsInResponse;
         mGson = new Gson();
@@ -86,105 +98,116 @@ public class DebugInterceptor implements Interceptor {
 
         final Response response;
         try {
-             response = chain.proceed(request);
+            response = chain.proceed(request);
         } catch (Exception e) {
             printError(request, e);
             throw e;
         }
 
         printResponse(response);
-
         return response;
     }
 
     private void printRequest(final Request request) {
+        try {
+            final String method = request.method();
+            final String url = request.url().toString();
 
-        final String method = request.method();
-        final String url = request.url().toString();
+            final StringBuilder sb = new StringBuilder("[REQUEST]")
+                    .append(String.format(" | METHOD: %s", method))
+                    .append(String.format(" | URL: %s", url));
 
-        final StringBuilder sb = new StringBuilder("[REQUEST]")
-                .append(String.format(" | METHOD: %s", method))
-                .append(String.format(" | URL: %s", url));
+            if (mPrintRequestHeaders) {
+                final String headers = headersToString(request.headers());
+                sb.append(String.format("\n| HEADERS: %s", headers));
+            }
 
-        if (mPrintRequestHeaders) {
-            final String headers = headersToString(request.headers());
-            sb.append(String.format("\n| HEADERS: %s", headers));
+            if (mPrintRequestBody) {
+                final String body = parseRequestBody(request.body());
+                sb.append(String.format("\n| BODY: %s", body));
+            }
+
+            d(sb.toString());
+
+        } catch (Exception e) {
+            e(e, "DebugInterceptor threw exception");
         }
-
-        if (mPrintRequestBody) {
-            final String body = parseRequestBody(request.body());
-            sb.append(String.format("\n| BODY: %s", body));
-        }
-
-        d(sb.toString());
     }
 
 
     private final static Charset UTF8 = Charset.forName("UTF-8");
 
     private void printResponse(final Response response) {
+        try {
+            final String method = response.request().method();
+            final String url = response.request().url().toString();
+            final int statusCode = response.code();
+            final String statusText = response.message();
+            final long time = response.receivedResponseAtMillis() - response.sentRequestAtMillis();
 
-        final String method = response.request().method();
-        final String url = response.request().url().toString();
-        final int statusCode = response.code();
-        final String statusText = response.message();
-        final long time = response.receivedResponseAtMillis() - response.sentRequestAtMillis();
+            final StringBuilder sb = new StringBuilder("[RESPONSE]")
+                    .append(String.format(" | METHOD: %s", method))
+                    .append(String.format(" | URL: %s", url))
+                    .append(String.format(" | STATUS: %d (%s)", statusCode, !TextUtils.isEmpty(statusText) ? statusText : StatusCodes.STATUS.get(statusCode)))
+                    .append(String.format(" | TIME: %d ms", time));
 
-        final StringBuilder sb = new StringBuilder("[RESPONSE]")
-                .append(String.format(" | METHOD: %s", method))
-                .append(String.format(" | URL: %s", url))
-                .append(String.format(" | STATUS: %d (%s)", statusCode, !TextUtils.isEmpty(statusText) ? statusText : StatusCodes.STATUS.get(statusCode)))
-                .append(String.format(" | TIME: %d ms", time));
-
-        if (mPrintRequestBodyParamsInResponse != null) {
-            try {
-                final String requestBody = parseRequestBody(response.request().body());
-                final Map params = mGson.fromJson(requestBody, Map.class);
-                for (final String p : mPrintRequestBodyParamsInResponse) {
-                    if (params.containsKey(p)) {
-                        final Object v = params.get(p);
-                        sb.append(String.format(" | %s: %s", p, v));
+            if (mPrintRequestBodyParamsInResponse != null) {
+                try {
+                    final String requestBody = parseRequestBody(response.request().body());
+                    final Map params = mGson.fromJson(requestBody, Map.class);
+                    for (final String p : mPrintRequestBodyParamsInResponse) {
+                        if (params.containsKey(p)) {
+                            final Object v = params.get(p);
+                            sb.append(String.format(" | %s: %s", p, v));
+                        }
                     }
+                } catch (Exception e) {
+                    e(e);
                 }
-            } catch (Exception e) {
-                e(e);
             }
-        }
 
-        if (mPrintResponseHeaders) {
-            final String headers = headersToString(response.headers());
-            sb.append(String.format("\n| HEADERS: %s", headers));
-        }
+            if (mPrintResponseHeaders) {
+                final String headers = headersToString(response.headers());
+                sb.append(String.format("\n| HEADERS: %s", headers));
+            }
 
-        final boolean success = response.isSuccessful();
+            final boolean success = response.isSuccessful();
 
-        if (success && mPrintResponseBody || !success && mPrintResponseErrorBody) {
-            final String body = parseResponseBody(response.body());
-            sb.append(String.format("\n| BODY: %s", body));
-        }
+            if (success && mPrintResponseBody || !success && mPrintResponseErrorBody) {
+                final String body = parseResponseBody(response.body());
+                sb.append(String.format("\n| BODY: %s", body));
+            }
 
-        if (success) {
-            d(sb.toString());
+            if (success) {
+                d(sb.toString());
 
-        } else {
-            e(sb.toString());
+            } else {
+                e(sb.toString());
+            }
+
+        } catch (Exception e) {
+            e(e, "DebugInterceptor threw exception");
         }
     }
 
     private void printError(final Request request, final Exception e) {
+        try {
+            final String method = request.method();
+            final String url = request.url().toString();
+            final String exception = e.getClass().getName();
+            final String message = e.getMessage();
 
-        final String method = request.method();
-        final String url = request.url().toString();
-        final String exception = e.getClass().getName();
-        final String message = e.getMessage();
+            final StringBuilder sb = new StringBuilder("[ERROR]")
+                    .append(String.format(" | METHOD: %s", method))
+                    .append(String.format(" | URL: %s", url))
+                    .append(String.format(" | EXCEPTION: %s", exception))
+                    .append(String.format(" | MESSAGE: %s", message));
 
-        final StringBuilder sb = new StringBuilder("[ERROR]")
-                .append(String.format(" | METHOD: %s", method))
-                .append(String.format(" | URL: %s", url))
-                .append(String.format(" | EXCEPTION: %s", exception))
-                .append(String.format(" | MESSAGE: %s", message));
+            e(sb.toString());
 
-        e(sb.toString());
+        } catch (Exception e2) {
+            e(e2, "DebugInterceptor threw exception");
+        }
     }
 
     private String headersToString(Headers headers) {
@@ -260,11 +283,11 @@ public class DebugInterceptor implements Interceptor {
     }
 
     private void d(String m, Object... p) {
-        Log.d(TAG, String.format(m, p));
+        Log.d(TAG, format(m, p));
     }
 
     private void e(String m, Object... p) {
-        Log.e(TAG, String.format(m, p));
+        Log.e(TAG, format(m, p));
     }
 
     private void e(Exception e) {
@@ -272,6 +295,15 @@ public class DebugInterceptor implements Interceptor {
     }
 
     private void e(Exception e, String m, Object... p) {
-        Log.e(TAG, String.format(m, p), e);
+        Log.e(TAG, format(m, p), e);
+    }
+
+    private String format(String m, Object... p) {
+        if (p != null && p.length > 0) {
+            return String.format(m, p);
+
+        } else {
+            return m;
+        }
     }
 }
